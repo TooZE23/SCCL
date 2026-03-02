@@ -1,0 +1,54 @@
+_BASE_: "./Base-RCNN-C4.yaml"
+MODEL:
+  # META_ARCHITECTURE: "TwoStagePseudoLabGeneralizedRCNN"
+  META_ARCHITECTURE: "DAobjGeneralizedRCNN"
+  BACKBONE:
+    NAME: "build_vgg_backbone"
+  MASK_ON: False
+  RESNETS:
+    DEPTH: 101
+  PROPOSAL_GENERATOR:
+    NAME: "PseudoLabRPN"
+  # RPN:
+  #   POSITIVE_FRACTION: 0.25
+  RPN:
+    IN_FEATURES: ["vgg4"]
+  ROI_HEADS:
+    NAME: "StandardROIHeadsPseudoLab"
+    LOSS: "CrossEntropy" # variant: "CrossEntropy"
+    NUM_CLASSES: 8
+    IN_FEATURES: ["vgg4"]
+  ROI_BOX_HEAD:
+    NAME: "FastRCNNConvFCHead"
+    NUM_FC: 2
+    POOLER_RESOLUTION: 7
+SOLVER:
+  LR_SCHEDULER_NAME: "WarmupTwoStageMultiStepLR"
+  STEPS: (60000, 80000, 90000, 360000)
+  FACTOR_LIST: (1, 1, 1, 1, 1)
+  MAX_ITER: 100000
+  IMG_PER_BATCH_LABEL: 4
+  IMG_PER_BATCH_UNLABEL: 4
+  BASE_LR: 2.5e-4
+DATALOADER:
+  SUP_PERCENT: 100.0
+DATASETS:
+  CROSS_DATASET: True
+  TRAIN_LABEL: ("cityscapes_fine_instance_seg_train",)
+  TRAIN_UNLABEL: ("cityscapes_foggy_train",)
+  TEST: ("cityscapes_foggy_val",)
+SEMISUPNET:
+  Trainer: "sccl"
+  BBOX_THRESHOLD: 0.8
+  TEACHER_UPDATE_ITER: 1
+  BURN_UP_STEP: 11145
+  ITERS_PER_EPOCH: 743
+  EMA_KEEP_RATE: 0.9996
+  UNSUP_LOSS_WEIGHT: 1.0
+  SUP_LOSS_WEIGHT: 1.0
+  DIS_TYPE: "vgg4" 
+  GRAM_HOOK: ["vgg0","vgg1"]   ## LAYERS TO EXTRACT FEATURES FOR GRAM MATRIX
+  SHUFFLE_CKPT: "checkpoint/vgg_shuffle_60.pth"  ## PRETRAINED CHECKPOINT FOR SHUFFLE LOSS
+  DS_CHANNEL: 128
+TEST:
+  EVAL_PERIOD: 1000
