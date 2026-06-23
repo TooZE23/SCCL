@@ -52,3 +52,4 @@ SEMISUPNET:
   DS_CHANNEL: 128
 TEST:
   EVAL_PERIOD: 1000
+OUTPUT_DIR: "./output/faster_rcnn_vgg_cross_city"
