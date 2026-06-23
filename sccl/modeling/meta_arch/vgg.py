@@ -3,6 +3,7 @@ import logging
 import torch.nn as nn
 import torch
 from typing import Union, List, Dict, cast
+import detectron2.utils.comm as comm
 from detectron2.modeling.backbone import (
     Backbone,
     BACKBONE_REGISTRY
@@ -13,6 +14,12 @@ from detectron2.modeling.backbone.fpn import FPN, LastLevelMaxPool
 logger = logging.getLogger(__name__)
 
 
+def _emit_vgg_init_log(message: str, level: int = logging.INFO) -> None:
+    tagged = f"[VGGInit] {message}"
+    logger.log(level, tagged)
+    # Make initialization status always visible in training stdout.
+    if comm.is_main_process():
+        print(tagged, flush=True)
 
 def make_layers(cfg: List[Union[str, int]], batch_norm: bool = False) -> nn.Sequential:
     layers: List[nn.Module] = []
@@ -144,6 +151,10 @@ class vgg_backbone(Backbone):
 
     def _load_imagenet_pretrained(self, cfg) -> None:
         if not cfg.MODEL.BACKBONE.VGG16_IMAGENET_PRETRAINED:
+            _emit_vgg_init_log(
+                "VGG16_IMAGENET_PRETRAINED=False, using random initialization.",
+                level=logging.WARNING,
+            )
             return
 
         weights_path = cfg.MODEL.BACKBONE.VGG16_IMAGENET_WEIGHTS
@@ -162,11 +173,10 @@ class vgg_backbone(Backbone):
                     raise ValueError(f"No VGG backbone weights matched in: {weights_path}")
 
                 missing_keys, unexpected_keys = self.vgg.load_state_dict(state_dict, strict=False)
-                logger.info(
-                    "Loaded VGG16 ImageNet weights from %s (missing=%d, unexpected=%d)",
-                    weights_path,
-                    len(missing_keys),
-                    len(unexpected_keys),
+                _emit_vgg_init_log(
+                    "Loaded VGG16 ImageNet weights from "
+                    f"{weights_path} (matched={len(state_dict)}, "
+                    f"missing={len(missing_keys)}, unexpected={len(unexpected_keys)})."
                 )
                 return
 
@@ -180,16 +190,15 @@ class vgg_backbone(Backbone):
             missing_keys, unexpected_keys = self.vgg.load_state_dict(
                 tv_model.features.state_dict(), strict=False
             )
-            logger.info(
-                "Loaded torchvision VGG16_BN ImageNet weights (missing=%d, unexpected=%d)",
-                len(missing_keys),
-                len(unexpected_keys),
+            _emit_vgg_init_log(
+                "Loaded torchvision VGG16_BN ImageNet weights "
+                f"(missing={len(missing_keys)}, unexpected={len(unexpected_keys)})."
             )
         except Exception as exc:
-            logger.warning(
+            _emit_vgg_init_log(
                 "Failed to load ImageNet VGG16_BN pretrained weights, "
-                "fallback to random initialization: %s",
-                exc,
+                f"fallback to random initialization: {exc}",
+                level=logging.WARNING,
             )
 
 
@@ -200,14 +209,6 @@ def build_vgg_backbone(cfg, _):
 
 @BACKBONE_REGISTRY.register() #already register in baseline model
 def build_vgg_fpn_backbone(cfg, _):
-    # backbone = FPN(
-    #     bottom_up=build_vgg_backbone(cfg),
-    #     in_features=cfg.MODEL.FPN.IN_FEATURES,
-    #     out_channels=cfg.MODEL.FPN.OUT_CHANNELS,
-    #     norm=cfg.MODEL.FPN.NORM,
-    #     top_block=LastLevelMaxPool(),
-    # )
-
     bottom_up = vgg_backbone(cfg)
     in_features = cfg.MODEL.FPN.IN_FEATURES
     out_channels = cfg.MODEL.FPN.OUT_CHANNELS
